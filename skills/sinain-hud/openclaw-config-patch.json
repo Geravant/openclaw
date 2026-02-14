@@ -1,0 +1,9 @@
+{
+  "_comment": "Merge into agents.defaults in /mnt/openclaw-state/openclaw.json — enables cross-session history access and 15m heartbeat cadence for self-improving reflection cycle",
+  "agents.defaults.sandbox": {
+    "sessionToolsVisibility": "all"
+  },
+  "agents.defaults.heartbeat": {
+    "every": "15m"
+  }
+}
