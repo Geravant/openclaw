@@ -25,7 +25,7 @@ Quick scan of current user state. Respond to what's happening NOW.
 | New tech/topic being explored | `sessions_spawn`: "Research [topic]: key findings, best practices, pitfalls" |
 | Clear next action to suggest | Send quick suggestion to Telegram |
 
-**3. Skip** if no sinain activity in >30 min (user idle) — proceed to Phase 3 only if active.
+**3. Skip** if no sinain activity in >30 min (user idle). Phase 3 always runs regardless.
 
 **Rules:** Max 2 subagents. NEVER repeat a recent action. Prefer depth over breadth.
 
@@ -33,13 +33,22 @@ Quick scan of current user state. Respond to what's happening NOW.
 
 Close the feedback loop by maintaining an evolving playbook.
 
-### Step 1: Gather deep context
+### Step 1: Gather context
 
-```
-sessions_history({sessionKey: "agent:main:sinain", limit: 50, includeTools: true})
-```
+**Always collect (every tick):**
+1. `sessions_history({sessionKey: "agent:main:sinain", limit: 50, includeTools: true})` — recent session data
+2. Read `memory/sinain-playbook.md` — current patterns
+3. Read recent `memory/playbook-logs/*.jsonl` — prior decisions, what was suggested/skipped
 
-Scan the full window: topics, tools, errors, resolutions, app patterns, audio themes, feedback summaries.
+**If active (fresh session data available):**
+Scan the full window — topics, tools, errors, resolutions, app patterns, audio themes, feedback summaries.
+
+**If idle (>30 min no activity) — mine deeper sources:**
+- Read daily memory files (`memory/YYYY-MM-DD.md`) — these contain rich session notes: errors encountered, architectural decisions, user preferences, research results, work patterns
+- Cross-reference playbook entries against daily memory — do patterns hold up? Are there entries in daily memory that should be playbook patterns but aren't?
+- Review `memory/devmatrix-summary.md` and other summary files for broader context
+- Look for multi-day trends: recurring errors, evolving interests, productivity rhythms
+- Re-evaluate existing playbook — do any entries contradict each other? Should any be pruned or promoted based on accumulated daily memory evidence?
 
 ### Step 2: Check feedback signals
 
@@ -102,7 +111,7 @@ Using BOTH the deep context (Step 1) AND the updated playbook (Step 3b), produce
 > **Insight:** [1-2 sentences] A surprising, non-obvious connection from accumulated data. Cross-domain patterns, unexpected correlations, things the user hasn't noticed. Cite specific observations. Connect dots between different sessions, topics, or timeframes.
 
 ### Phase 3 Rules
-- Skip if idle (same >30 min rule from Phase 2)
+- **Always runs** — even when user is idle. During idle ticks, mine daily memory files and playbook logs for deeper patterns. The output quality bar still applies — only send a Telegram message if you have a genuine suggestion + insight grounded in specific observations from memory.
 - Skip if you cannot produce BOTH a genuinely useful suggestion AND a genuinely surprising insight — reply HEARTBEAT_OK (still log the skip with reason in Step 4)
 - The suggestion MUST reference a playbook pattern or concrete observation, not generic advice
 - The insight MUST connect 2+ distinct observations that aren't obviously related
