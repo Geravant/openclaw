@@ -1,9 +1,11 @@
 {
-  "_comment": "Merge into agents.defaults in /mnt/openclaw-state/openclaw.json — enables cross-session history access and 15m heartbeat cadence for self-improving reflection cycle",
+  "_comment": "Merge into agents.defaults in /mnt/openclaw-state/openclaw.json — enables cross-session history access, 30m heartbeat cadence, and enforces full HEARTBEAT.md protocol execution",
   "agents.defaults.sandbox": {
     "sessionToolsVisibility": "all"
   },
   "agents.defaults.heartbeat": {
-    "every": "15m"
+    "every": "30m",
+    "prompt": "Execute HEARTBEAT.md — all phases, all steps, in order. Phase 3 Steps 1-4 are mandatory every tick. Complete Step 4 logging before responding. Do not infer or repeat old tasks from prior chats.",
+    "ackMaxChars": 0
   }
 }

@@ -357,6 +357,15 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Current elevated level: on");
   });
 
+  it("defers to HEARTBEAT.md protocol when heartbeat file is in context", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      contextFiles: [{ path: "HEARTBEAT.md", content: "# Test heartbeat protocol" }],
+    });
+    expect(prompt).toContain("you MUST execute the full protocol defined in HEARTBEAT.md");
+    expect(prompt).not.toContain("and there is nothing that needs attention, reply exactly:");
+  });
+
   it("includes reaction guidance when provided", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",

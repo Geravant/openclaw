@@ -1,5 +1,12 @@
 # HEARTBEAT.md
 
+> **Execution contract — no exceptions, no short-circuiting:**
+> 1. Phase 1 (Git Backup) → Phase 2 (Observe & Act) → Phase 3 Steps 1-4 — **mandatory every tick**
+> 2. Phase 3 Step 5 (Output) — only if quality bar is met
+> 3. HEARTBEAT_OK — only permitted after Step 4 log entry is written with `"skipped": true`
+>
+> You may NOT reply HEARTBEAT_OK until Step 4 is complete. Step 4 is the gate.
+
 ## Phase 1: Git Backup (persists playbook & logs)
 
 If there are uncommitted changes in the workspace:
@@ -78,6 +85,8 @@ Keep all archived versions — they form a dataset for evaluating playbook evolu
 
 ### Step 4: Log the decision process — `memory/playbook-logs/YYYY-MM-DD.jsonl`
 
+**This step is the mandatory gate — it must execute before any HEARTBEAT_OK or output.**
+
 Append ONE JSON line per heartbeat tick documenting the full decision chain:
 ```json
 {
@@ -111,8 +120,8 @@ Using BOTH the deep context (Step 1) AND the updated playbook (Step 3b), produce
 > **Insight:** [1-2 sentences] A surprising, non-obvious connection from accumulated data. Cross-domain patterns, unexpected correlations, things the user hasn't noticed. Cite specific observations. Connect dots between different sessions, topics, or timeframes.
 
 ### Phase 3 Rules
-- **Always runs** — even when user is idle. During idle ticks, mine daily memory files and playbook logs for deeper patterns. The output quality bar still applies — only send a Telegram message if you have a genuine suggestion + insight grounded in specific observations from memory.
-- Skip if you cannot produce BOTH a genuinely useful suggestion AND a genuinely surprising insight — reply HEARTBEAT_OK (still log the skip with reason in Step 4)
+- **Steps 1-4 always execute** — every tick, even when user is idle. During idle ticks, mine daily memory files and playbook logs for deeper patterns.
+- Step 5 output is conditional on quality — if you cannot produce BOTH a genuinely useful suggestion AND a genuinely surprising insight, log `"skipped": true` with a `skipReason` in Step 4, then reply HEARTBEAT_OK.
 - The suggestion MUST reference a playbook pattern or concrete observation, not generic advice
 - The insight MUST connect 2+ distinct observations that aren't obviously related
 - NEVER repeat a suggestion or insight from recent heartbeats (check `memory/playbook-logs/`)
