@@ -533,11 +533,25 @@ export function buildAgentSystemPrompt(params: {
 
   // Skip heartbeats for subagent/none modes
   if (!isMinimal) {
+    const hasHeartbeatFile = contextFiles.some((file) => {
+      const normalizedPath = file.path.trim().replace(/\\/g, "/");
+      const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
+      return baseName.toLowerCase() === "heartbeat.md";
+    });
+
+    lines.push("## Heartbeats", heartbeatPromptLine);
+    if (hasHeartbeatFile) {
+      lines.push(
+        "HEARTBEAT.md is loaded in your project context. On every heartbeat poll, you MUST execute the full protocol defined in HEARTBEAT.md — all phases, all steps, in order.",
+        "Only reply HEARTBEAT_OK if HEARTBEAT.md explicitly permits it after you have completed all mandatory steps.",
+      );
+    } else {
+      lines.push(
+        "If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
+        "HEARTBEAT_OK",
+      );
+    }
     lines.push(
-      "## Heartbeats",
-      heartbeatPromptLine,
-      "If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
-      "HEARTBEAT_OK",
       'OpenClaw treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
       'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
       "",
