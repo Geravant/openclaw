@@ -50,12 +50,17 @@ Close the feedback loop by maintaining an evolving playbook.
 **If active (fresh session data available):**
 Scan the full window — topics, tools, errors, resolutions, app patterns, audio themes, feedback summaries.
 
-**If idle (>30 min no activity) — mine deeper sources:**
-- Read daily memory files (`memory/YYYY-MM-DD.md`) — these contain rich session notes: errors encountered, architectural decisions, user preferences, research results, work patterns
-- Cross-reference playbook entries against daily memory — do patterns hold up? Are there entries in daily memory that should be playbook patterns but aren't?
-- Review `memory/devmatrix-summary.md` and other summary files for broader context
-- Look for multi-day trends: recurring errors, evolving interests, productivity rhythms
-- Re-evaluate existing playbook — do any entries contradict each other? Should any be pruned or promoted based on accumulated daily memory evidence?
+**If idle (>30 min no activity) — deep mining is MANDATORY, not optional:**
+
+You MUST read at least 2 daily memory files (`memory/YYYY-MM-DD.md`) per idle tick. Rotate through dates you haven't mined recently (check `minedSources` in recent playbook-logs to avoid re-reading the same files).
+
+After reading, you MUST do all of the following:
+1. Cross-reference playbook entries against what you read — do patterns hold up? Are there observations in daily memory that should be playbook patterns but aren't?
+2. Review `memory/devmatrix-summary.md` and other summary files for broader context
+3. Look for multi-day trends: recurring errors, evolving interests, productivity rhythms
+4. Re-evaluate existing playbook — do any entries contradict each other? Should any be pruned or promoted?
+
+**"No new data" is NOT a valid skip reason when daily memory files exist unread.** The session history being stale does not mean there is nothing to mine — daily memory files contain rich session notes, architectural decisions, user preferences, and research results that may reveal patterns not yet in the playbook.
 
 ### Step 2: Check feedback signals
 
@@ -91,6 +96,9 @@ Append ONE JSON line per heartbeat tick documenting the full decision chain:
 ```json
 {
   "ts": "ISO-8601",
+  "idle": true,
+  "minedSources": ["memory/2026-02-14.md", "memory/2026-02-11.md"],
+  "miningFindings": "brief summary of what was discovered from deep mining",
   "sessionHistorySummary": "brief summary of what was observed",
   "feedbackScores": { "avg": 0.45, "high": ["coding+error->fix worked"], "low": ["restart suggestion->error persisted"] },
   "actionsConsidered": [
@@ -120,8 +128,9 @@ Using BOTH the deep context (Step 1) AND the updated playbook (Step 3b), produce
 > **Insight:** [1-2 sentences] A surprising, non-obvious connection from accumulated data. Cross-domain patterns, unexpected correlations, things the user hasn't noticed. Cite specific observations. Connect dots between different sessions, topics, or timeframes.
 
 ### Phase 3 Rules
-- **Steps 1-4 always execute** — every tick, even when user is idle. During idle ticks, mine daily memory files and playbook logs for deeper patterns.
+- **Steps 1-4 always execute** — every tick, even when user is idle. During idle ticks, deep mining of daily memory files is mandatory (see Step 1 idle section).
 - Step 5 output is conditional on quality — if you cannot produce BOTH a genuinely useful suggestion AND a genuinely surprising insight, log `"skipped": true` with a `skipReason` in Step 4, then reply HEARTBEAT_OK.
+- **Idle tick skip reasons must be specific**: "no new data" is invalid. Valid: "mined 2026-02-11.md and 2026-02-06.md — OCR backpressure pattern already in playbook, no new cross-references found." Prove you actually read the files.
 - The suggestion MUST reference a playbook pattern or concrete observation, not generic advice
 - The insight MUST connect 2+ distinct observations that aren't obviously related
 - NEVER repeat a suggestion or insight from recent heartbeats (check `memory/playbook-logs/`)
