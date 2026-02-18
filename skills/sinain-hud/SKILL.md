@@ -328,7 +328,8 @@ The `openclaw-config-patch.json` documents the required server configuration:
 |------|--------|
 | Respond to live context | Reply directly (goes to HUD) |
 | Spawn background work | `sessions_spawn({task: "...", cleanup: "delete"})` |
-| Read past context | `sessions_history({sessionKey: "agent:main:sinain", limit: 20})` |
+| Read past context (light) | `sessions_history({sessionKey: "agent:main:sinain", limit: 50, includeTools: false})` |
+| Read past context (detailed) | `sessions_history({sessionKey: "agent:main:sinain", limit: 10, includeTools: true})` — only when signals found |
 | Proactive research | Respond first, then `sessions_spawn` with research task (max 1 per escalation) |
 | Process feedback | Read `[sinain-core:feedback-summary]`, adjust strategy |
 | Self-improving loop | Heartbeat curates `memory/sinain-playbook.md` every 15m (see HEARTBEAT.md) |
