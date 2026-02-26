@@ -40,6 +40,20 @@ describe("isContextOverflowError", () => {
     }
   });
 
+  it("matches Anthropic 'extra usage is required' 429 error", () => {
+    // Anthropic returns HTTP 429 with this message when context is too large.
+    // Without this, the error is classified as rate_limit (retry forever)
+    // instead of context_overflow (compact + retry).
+    const samples = [
+      "Extra usage is required for long context requests",
+      '429 {"type":"error","error":{"type":"request_too_large","message":"Extra usage is required for long context requests. See https://docs.anthropic.com/en/docs/about-claude/models#extended-context-window"}}',
+      "extra usage is required",
+    ];
+    for (const sample of samples) {
+      expect(isContextOverflowError(sample)).toBe(true);
+    }
+  });
+
   it("ignores unrelated errors", () => {
     expect(isContextOverflowError("rate limit exceeded")).toBe(false);
     expect(isContextOverflowError("request size exceeds upload limit")).toBe(false);
