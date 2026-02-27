@@ -71,3 +71,6 @@ USER.md
 
 # local tooling
 .serena/
+
+# Sensitive deploy docs (purged from history)
+docs/deploy/strato.md
