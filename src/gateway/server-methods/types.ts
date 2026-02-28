@@ -14,6 +14,7 @@ type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
 export type GatewayClient = {
   connect: ConnectParams;
+  connId?: string;
 };
 
 export type RespondFn = (
@@ -41,6 +42,12 @@ export type GatewayRequestContext = {
       dropIfSlow?: boolean;
       stateVersion?: { presence?: number; health?: number };
     },
+  ) => void;
+  sendToClient: (
+    connId: string,
+    event: string,
+    payload: unknown,
+    opts?: { dropIfSlow?: boolean },
   ) => void;
   nodeSendToSession: (sessionKey: string, event: string, payload: unknown) => void;
   nodeSendToAllSubscribed: (event: string, payload: unknown) => void;

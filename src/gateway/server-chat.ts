@@ -118,6 +118,12 @@ export type NodeSendToSession = (sessionKey: string, event: string, payload: unk
 
 export type AgentEventHandlerOptions = {
   broadcast: ChatEventBroadcast;
+  sendToClient?: (
+    connId: string,
+    event: string,
+    payload: unknown,
+    opts?: { dropIfSlow?: boolean },
+  ) => void;
   nodeSendToSession: NodeSendToSession;
   agentRunSeq: Map<string, number>;
   chatRunState: ChatRunState;
@@ -127,13 +133,20 @@ export type AgentEventHandlerOptions = {
 
 export function createAgentEventHandler({
   broadcast,
+  sendToClient,
   nodeSendToSession,
   agentRunSeq,
   chatRunState,
   resolveSessionKeyForRun,
   clearAgentRunContext,
 }: AgentEventHandlerOptions) {
-  const emitChatDelta = (sessionKey: string, clientRunId: string, seq: number, text: string) => {
+  const emitChatDelta = (
+    sessionKey: string,
+    clientRunId: string,
+    seq: number,
+    text: string,
+    route: ChatEventBroadcast,
+  ) => {
     chatRunState.buffers.set(clientRunId, text);
     const now = Date.now();
     const last = chatRunState.deltaSentAt.get(clientRunId) ?? 0;
@@ -152,7 +165,7 @@ export function createAgentEventHandler({
     };
     // Suppress webchat broadcast for heartbeat runs when showOk is false
     if (!shouldSuppressHeartbeatBroadcast(clientRunId)) {
-      broadcast("chat", payload, { dropIfSlow: true });
+      route("chat", payload, { dropIfSlow: true });
     }
     nodeSendToSession(sessionKey, "chat", payload);
   };
@@ -162,7 +175,8 @@ export function createAgentEventHandler({
     clientRunId: string,
     seq: number,
     jobState: "done" | "error",
-    error?: unknown,
+    error: unknown,
+    route: ChatEventBroadcast,
   ) => {
     const text = chatRunState.buffers.get(clientRunId)?.trim() ?? "";
     chatRunState.buffers.delete(clientRunId);
@@ -183,7 +197,7 @@ export function createAgentEventHandler({
       };
       // Suppress webchat broadcast for heartbeat runs when showOk is false
       if (!shouldSuppressHeartbeatBroadcast(clientRunId)) {
-        broadcast("chat", payload);
+        route("chat", payload);
       }
       nodeSendToSession(sessionKey, "chat", payload);
       return;
@@ -195,7 +209,7 @@ export function createAgentEventHandler({
       state: "error" as const,
       errorMessage: error ? formatForLog(error) : undefined,
     };
-    broadcast("chat", payload);
+    route("chat", payload);
     nodeSendToSession(sessionKey, "chat", payload);
   };
 
@@ -221,6 +235,15 @@ export function createAgentEventHandler({
     const clientRunId = chatLink?.clientRunId ?? evt.runId;
     const isAborted =
       chatRunState.abortedRuns.has(clientRunId) || chatRunState.abortedRuns.has(evt.runId);
+
+    // Resolve targeted routing: if this run has a targetConnId, send only to that client.
+    const runContext = getAgentRunContext(evt.runId);
+    const targetConnId = runContext?.targetConnId;
+    const route: ChatEventBroadcast =
+      targetConnId && sendToClient
+        ? (event, payload, opts) => sendToClient(targetConnId, event, payload, opts)
+        : broadcast;
+
     // Include sessionKey so Control UI can filter tool streams per session.
     const agentPayload = sessionKey ? { ...evt, sessionKey } : evt;
     const last = agentRunSeq.get(evt.runId) ?? 0;
@@ -229,6 +252,7 @@ export function createAgentEventHandler({
       return;
     }
     if (evt.seq !== last + 1) {
+      // Seq gap is a diagnostic — always broadcast to all clients.
       broadcast("agent", {
         runId: evt.runId,
         stream: "error",
@@ -242,7 +266,7 @@ export function createAgentEventHandler({
       });
     }
     agentRunSeq.set(evt.runId, evt.seq);
-    broadcast("agent", agentPayload);
+    route("agent", agentPayload);
 
     const lifecyclePhase =
       evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
@@ -250,7 +274,7 @@ export function createAgentEventHandler({
     if (sessionKey) {
       nodeSendToSession(sessionKey, "agent", agentPayload);
       if (!isAborted && evt.stream === "assistant" && typeof evt.data?.text === "string") {
-        emitChatDelta(sessionKey, clientRunId, evt.seq, evt.data.text);
+        emitChatDelta(sessionKey, clientRunId, evt.seq, evt.data.text, route);
       } else if (!isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {
         if (chatLink) {
           const finished = chatRunState.registry.shift(evt.runId);
@@ -264,6 +288,7 @@ export function createAgentEventHandler({
             evt.seq,
             lifecyclePhase === "error" ? "error" : "done",
             evt.data?.error,
+            route,
           );
         } else {
           emitChatFinal(
@@ -272,6 +297,7 @@ export function createAgentEventHandler({
             evt.seq,
             lifecyclePhase === "error" ? "error" : "done",
             evt.data?.error,
+            route,
           );
         }
       } else if (isAborted && (lifecyclePhase === "end" || lifecyclePhase === "error")) {

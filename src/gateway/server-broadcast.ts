@@ -74,5 +74,36 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
       }
     }
   };
-  return { broadcast };
+  const sendToClient = (
+    connId: string,
+    event: string,
+    payload: unknown,
+    opts?: { dropIfSlow?: boolean },
+  ) => {
+    const eventSeq = ++seq;
+    const frame = JSON.stringify({ type: "event", event, payload, seq: eventSeq });
+    logWs("out", "event", { event, seq: eventSeq, targetConnId: connId });
+    for (const c of params.clients) {
+      if (c.connId !== connId) continue;
+      if (!hasEventScope(c, event)) return;
+      const slow = c.socket.bufferedAmount > MAX_BUFFERED_BYTES;
+      if (slow && opts?.dropIfSlow) return;
+      if (slow) {
+        try {
+          c.socket.close(1008, "slow consumer");
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      try {
+        c.socket.send(frame);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+  };
+
+  return { broadcast, sendToClient };
 }

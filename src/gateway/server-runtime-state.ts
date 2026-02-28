@@ -57,6 +57,12 @@ export async function createGatewayRuntimeState(params: {
       stateVersion?: { presence?: number; health?: number };
     },
   ) => void;
+  sendToClient: (
+    connId: string,
+    event: string,
+    payload: unknown,
+    opts?: { dropIfSlow?: boolean },
+  ) => void;
   agentRunSeq: Map<string, number>;
   dedupe: Map<string, DedupeEntry>;
   chatRunState: ReturnType<typeof createChatRunState>;
@@ -149,7 +155,7 @@ export async function createGatewayRuntimeState(params: {
   }
 
   const clients = new Set<GatewayWsClient>();
-  const { broadcast } = createGatewayBroadcaster({ clients });
+  const { broadcast, sendToClient } = createGatewayBroadcaster({ clients });
   const agentRunSeq = new Map<string, number>();
   const dedupe = new Map<string, DedupeEntry>();
   const chatRunState = createChatRunState();
@@ -168,6 +174,7 @@ export async function createGatewayRuntimeState(params: {
     wss,
     clients,
     broadcast,
+    sendToClient,
     agentRunSeq,
     dedupe,
     chatRunState,

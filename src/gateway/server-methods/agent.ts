@@ -43,7 +43,7 @@ import { waitForAgentJob } from "./agent-job.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 export const agentHandlers: GatewayRequestHandlers = {
-  agent: async ({ params, respond, context }) => {
+  agent: async ({ params, respond, context, client }) => {
     const p = params as Record<string, unknown>;
     if (!validateAgentParams(p)) {
       respond(
@@ -287,6 +287,14 @@ export const agentHandlers: GatewayRequestHandlers = {
         bestEffortDeliver = true;
       }
       registerAgentRunContext(idem, { sessionKey: requestedSessionKey });
+    }
+
+    const responseTarget =
+      typeof (p as Record<string, unknown>).responseTarget === "string"
+        ? (p as Record<string, unknown>).responseTarget
+        : undefined;
+    if (responseTarget === "self" && client?.connId) {
+      registerAgentRunContext(idem, { targetConnId: client.connId });
     }
 
     const runId = idem;

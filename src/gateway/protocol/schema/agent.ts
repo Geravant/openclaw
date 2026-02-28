@@ -68,6 +68,7 @@ export const AgentParamsSchema = Type.Object(
     idempotencyKey: NonEmptyString,
     label: Type.Optional(SessionLabelString),
     spawnedBy: Type.Optional(Type.String()),
+    responseTarget: Type.Optional(Type.Union([Type.Literal("self"), Type.Literal("all")])),
   },
   { additionalProperties: false },
 );

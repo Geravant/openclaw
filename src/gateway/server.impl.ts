@@ -277,6 +277,7 @@ export async function startGatewayServer(
     wss,
     clients,
     broadcast,
+    sendToClient,
     agentRunSeq,
     dedupe,
     chatRunState,
@@ -395,6 +396,7 @@ export async function startGatewayServer(
   const agentUnsub = onAgentEvent(
     createAgentEventHandler({
       broadcast,
+      sendToClient,
       nodeSendToSession,
       agentRunSeq,
       chatRunState,
@@ -449,6 +451,7 @@ export async function startGatewayServer(
       incrementPresenceVersion,
       getHealthVersion,
       broadcast,
+      sendToClient,
       nodeSendToSession,
       nodeSendToAllSubscribed,
       nodeSubscribe,
