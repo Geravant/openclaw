@@ -1,0 +1,63 @@
+name: Build Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'anthillnet/openclaw'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack and install pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.23.0 --activate
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.9"
+
+      - name: Install dependencies
+        run: NODE_ENV=development pnpm install --frozen-lockfile
+
+      - name: Build
+        run: OPENCLAW_A2UI_SKIP_MISSING=1 pnpm build
+
+      - name: Build UI
+        run: OPENCLAW_PREFER_PNPM=1 pnpm ui:build
+
+      - name: Pack npm tarball
+        run: |
+          npm pack --ignore-scripts
+          mv openclaw-*.tgz openclaw-latest.tgz
+
+      - name: Upload to rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-latest
+          name: Latest Build
+          body: |
+            Rolling build from `main` branch.
+            Commit: ${{ github.sha }}
+            Built: ${{ github.event.head_commit.timestamp }}
+          prerelease: true
+          make_latest: false
+          files: openclaw-latest.tgz
