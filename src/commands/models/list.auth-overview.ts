@@ -12,6 +12,22 @@ import { shortenHomePath } from "../../utils.js";
 import { maskApiKey } from "./list.format.js";
 import type { ProviderAuthOverview } from "./list.types.js";
 
+function formatProfileSecretLabel(params: {
+  value: string | undefined;
+  ref: { source: string; id: string } | undefined;
+  kind: "api-key" | "token";
+}): string {
+  const value = typeof params.value === "string" ? params.value.trim() : "";
+  if (value) {
+    return params.kind === "token" ? `token:${maskApiKey(value)}` : maskApiKey(value);
+  }
+  if (params.ref) {
+    const refLabel = `ref(${params.ref.source}:${params.ref.id})`;
+    return params.kind === "token" ? `token:${refLabel}` : refLabel;
+  }
+  return params.kind === "token" ? "token:missing" : "missing";
+}
+
 export function resolveProviderAuthOverview(params: {
   provider: string;
   cfg: OpenClawConfig;
@@ -23,7 +39,9 @@ export function resolveProviderAuthOverview(params: {
   const profiles = listProfilesForProvider(store, provider);
   const withUnusableSuffix = (base: string, profileId: string) => {
     const unusableUntil = resolveProfileUnusableUntilForDisplay(store, profileId);
-    if (!unusableUntil || now >= unusableUntil) return base;
+    if (!unusableUntil || now >= unusableUntil) {
+      return base;
+    }
     const stats = store.usageStats?.[profileId];
     const kind =
       typeof stats?.disabledUntil === "number" && now < stats.disabledUntil
@@ -34,12 +52,28 @@ export function resolveProviderAuthOverview(params: {
   };
   const labels = profiles.map((profileId) => {
     const profile = store.profiles[profileId];
-    if (!profile) return `${profileId}=missing`;
+    if (!profile) {
+      return `${profileId}=missing`;
+    }
     if (profile.type === "api_key") {
-      return withUnusableSuffix(`${profileId}=${maskApiKey(profile.key)}`, profileId);
+      return withUnusableSuffix(
+        `${profileId}=${formatProfileSecretLabel({
+          value: profile.key,
+          ref: profile.keyRef,
+          kind: "api-key",
+        })}`,
+        profileId,
+      );
     }
     if (profile.type === "token") {
-      return withUnusableSuffix(`${profileId}=token:${maskApiKey(profile.token)}`, profileId);
+      return withUnusableSuffix(
+        `${profileId}=${formatProfileSecretLabel({
+          value: profile.token,
+          ref: profile.tokenRef,
+          kind: "token",
+        })}`,
+        profileId,
+      );
     }
     const display = resolveAuthProfileDisplayLabel({ cfg, store, profileId });
     const suffix =

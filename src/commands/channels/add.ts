@@ -1,11 +1,16 @@
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listChannelPluginCatalogEntries } from "../../channels/plugins/catalog.js";
 import { getChannelPlugin, normalizeChannelId } from "../../channels/plugins/index.js";
-import type { ChannelId } from "../../channels/plugins/types.js";
+import { moveSingleAccountChannelSectionToDefaultAccount } from "../../channels/plugins/setup-helpers.js";
+import type { ChannelId, ChannelSetupInput } from "../../channels/plugins/types.js";
 import { writeConfigFile, type OpenClawConfig } from "../../config/config.js";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../../runtime.js";
+import { resolveTelegramAccount } from "../../telegram/accounts.js";
+import { deleteTelegramUpdateOffset } from "../../telegram/update-offset-store.js";
 import { createClackPrompter } from "../../wizard/clack-prompter.js";
+import { applyAgentBindings, describeBinding } from "../agents.bindings.js";
+import { buildAgentSummaries } from "../agents.config.js";
 import { setupChannels } from "../onboard-channels.js";
 import type { ChannelChoice } from "../onboard-types.js";
 import {
@@ -18,41 +23,15 @@ import { channelLabel, requireValidConfig, shouldUseWizard } from "./shared.js";
 export type ChannelsAddOptions = {
   channel?: string;
   account?: string;
-  name?: string;
-  token?: string;
-  tokenFile?: string;
-  botToken?: string;
-  appToken?: string;
-  signalNumber?: string;
-  cliPath?: string;
-  dbPath?: string;
-  service?: "imessage" | "sms" | "auto";
-  region?: string;
-  authDir?: string;
-  httpUrl?: string;
-  httpHost?: string;
-  httpPort?: string;
-  webhookPath?: string;
-  webhookUrl?: string;
-  audienceType?: string;
-  audience?: string;
-  useEnv?: boolean;
-  homeserver?: string;
-  userId?: string;
-  accessToken?: string;
-  password?: string;
-  deviceName?: string;
   initialSyncLimit?: number | string;
-  ship?: string;
-  url?: string;
-  code?: string;
   groupChannels?: string;
   dmAllowlist?: string;
-  autoDiscoverChannels?: boolean;
-};
+} & Omit<ChannelSetupInput, "groupChannels" | "dmAllowlist" | "initialSyncLimit">;
 
 function parseList(value: string | undefined): string[] | undefined {
-  if (!value?.trim()) return undefined;
+  if (!value?.trim()) {
+    return undefined;
+  }
   const parsed = value
     .split(/[\n,;]+/g)
     .map((entry) => entry.trim())
@@ -62,10 +41,14 @@ function parseList(value: string | undefined): string[] | undefined {
 
 function resolveCatalogChannelEntry(raw: string, cfg: OpenClawConfig | null) {
   const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   const workspaceDir = cfg ? resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg)) : undefined;
   return listChannelPluginCatalogEntries({ workspaceDir }).find((entry) => {
-    if (entry.id.toLowerCase() === trimmed) return true;
+    if (entry.id.toLowerCase() === trimmed) {
+      return true;
+    }
     return (entry.meta.aliases ?? []).some((alias) => alias.trim().toLowerCase() === trimmed);
   });
 }
@@ -76,7 +59,9 @@ export async function channelsAddCommand(
   params?: { hasFlags?: boolean },
 ) {
   const cfg = await requireValidConfig(runtime);
-  if (!cfg) return;
+  if (!cfg) {
+    return;
+  }
   let nextConfig = cfg;
 
   const useWizard = shouldUseWizard(params);
@@ -108,7 +93,7 @@ export async function channelsAddCommand(
     if (wantsNames) {
       for (const channel of selection) {
         const accountId = accountIds[channel] ?? DEFAULT_ACCOUNT_ID;
-        const plugin = getChannelPlugin(channel as ChannelId);
+        const plugin = getChannelPlugin(channel);
         const account = plugin?.config.resolveAccount(nextConfig, accountId) as
           | { name?: string }
           | undefined;
@@ -125,6 +110,68 @@ export async function channelsAddCommand(
             accountId,
             name,
           });
+        }
+      }
+    }
+
+    const bindTargets = selection
+      .map((channel) => ({
+        channel,
+        accountId: accountIds[channel]?.trim(),
+      }))
+      .filter(
+        (
+          value,
+        ): value is {
+          channel: ChannelChoice;
+          accountId: string;
+        } => Boolean(value.accountId),
+      );
+    if (bindTargets.length > 0) {
+      const bindNow = await prompter.confirm({
+        message: "Bind configured channel accounts to agents now?",
+        initialValue: true,
+      });
+      if (bindNow) {
+        const agentSummaries = buildAgentSummaries(nextConfig);
+        const defaultAgentId = resolveDefaultAgentId(nextConfig);
+        for (const target of bindTargets) {
+          const targetAgentId = await prompter.select({
+            message: `Route ${target.channel} account "${target.accountId}" to agent`,
+            options: agentSummaries.map((agent) => ({
+              value: agent.id,
+              label: agent.isDefault ? `${agent.id} (default)` : agent.id,
+            })),
+            initialValue: defaultAgentId,
+          });
+          const bindingResult = applyAgentBindings(nextConfig, [
+            {
+              agentId: targetAgentId,
+              match: { channel: target.channel, accountId: target.accountId },
+            },
+          ]);
+          nextConfig = bindingResult.config;
+          if (bindingResult.added.length > 0 || bindingResult.updated.length > 0) {
+            await prompter.note(
+              [
+                ...bindingResult.added.map((binding) => `Added: ${describeBinding(binding)}`),
+                ...bindingResult.updated.map((binding) => `Updated: ${describeBinding(binding)}`),
+              ].join("\n"),
+              "Routing bindings",
+            );
+          }
+          if (bindingResult.conflicts.length > 0) {
+            await prompter.note(
+              [
+                "Skipped bindings already claimed by another agent:",
+                ...bindingResult.conflicts.map(
+                  (conflict) =>
+                    `- ${describeBinding(conflict.binding)} (agent=${conflict.existingAgentId})`,
+                ),
+              ].join("\n"),
+              "Routing bindings",
+            );
+          }
         }
       }
     }
@@ -149,7 +196,9 @@ export async function channelsAddCommand(
       workspaceDir,
     });
     nextConfig = result.cfg;
-    if (!result.installed) return;
+    if (!result.installed) {
+      return;
+    }
     reloadOnboardingPluginRegistry({ cfg: nextConfig, runtime, workspaceDir });
     channel = normalizeChannelId(catalogEntry.id) ?? (catalogEntry.id as ChannelId);
   }
@@ -169,9 +218,6 @@ export async function channelsAddCommand(
     runtime.exit(1);
     return;
   }
-  const accountId =
-    plugin.setup.resolveAccountId?.({ cfg: nextConfig, accountId: opts.account }) ??
-    normalizeAccountId(opts.account);
   const useEnv = opts.useEnv === true;
   const initialSyncLimit =
     typeof opts.initialSyncLimit === "number"
@@ -182,53 +228,7 @@ export async function channelsAddCommand(
   const groupChannels = parseList(opts.groupChannels);
   const dmAllowlist = parseList(opts.dmAllowlist);
 
-  const validationError = plugin.setup.validateInput?.({
-    cfg: nextConfig,
-    accountId,
-    input: {
-      name: opts.name,
-      token: opts.token,
-      tokenFile: opts.tokenFile,
-      botToken: opts.botToken,
-      appToken: opts.appToken,
-      signalNumber: opts.signalNumber,
-      cliPath: opts.cliPath,
-      dbPath: opts.dbPath,
-      service: opts.service,
-      region: opts.region,
-      authDir: opts.authDir,
-      httpUrl: opts.httpUrl,
-      httpHost: opts.httpHost,
-      httpPort: opts.httpPort,
-      webhookPath: opts.webhookPath,
-      webhookUrl: opts.webhookUrl,
-      audienceType: opts.audienceType,
-      audience: opts.audience,
-      homeserver: opts.homeserver,
-      userId: opts.userId,
-      accessToken: opts.accessToken,
-      password: opts.password,
-      deviceName: opts.deviceName,
-      initialSyncLimit,
-      useEnv,
-      ship: opts.ship,
-      url: opts.url,
-      code: opts.code,
-      groupChannels,
-      dmAllowlist,
-      autoDiscoverChannels: opts.autoDiscoverChannels,
-    },
-  });
-  if (validationError) {
-    runtime.error(validationError);
-    runtime.exit(1);
-    return;
-  }
-
-  nextConfig = applyChannelAccountConfig({
-    cfg: nextConfig,
-    channel,
-    accountId,
+  const input: ChannelSetupInput = {
     name: opts.name,
     token: opts.token,
     tokenFile: opts.tokenFile,
@@ -260,7 +260,51 @@ export async function channelsAddCommand(
     groupChannels,
     dmAllowlist,
     autoDiscoverChannels: opts.autoDiscoverChannels,
+  };
+  const accountId =
+    plugin.setup.resolveAccountId?.({
+      cfg: nextConfig,
+      accountId: opts.account,
+      input,
+    }) ?? normalizeAccountId(opts.account);
+
+  const validationError = plugin.setup.validateInput?.({
+    cfg: nextConfig,
+    accountId,
+    input,
   });
+  if (validationError) {
+    runtime.error(validationError);
+    runtime.exit(1);
+    return;
+  }
+
+  const previousTelegramToken =
+    channel === "telegram"
+      ? resolveTelegramAccount({ cfg: nextConfig, accountId }).token.trim()
+      : "";
+
+  if (accountId !== DEFAULT_ACCOUNT_ID) {
+    nextConfig = moveSingleAccountChannelSectionToDefaultAccount({
+      cfg: nextConfig,
+      channelKey: channel,
+    });
+  }
+
+  nextConfig = applyChannelAccountConfig({
+    cfg: nextConfig,
+    channel,
+    accountId,
+    input,
+  });
+
+  if (channel === "telegram") {
+    const nextTelegramToken = resolveTelegramAccount({ cfg: nextConfig, accountId }).token.trim();
+    if (previousTelegramToken !== nextTelegramToken) {
+      // Clear stale polling offsets after Telegram token rotation.
+      await deleteTelegramUpdateOffset({ accountId });
+    }
+  }
 
   await writeConfigFile(nextConfig);
   runtime.log(`Added ${channelLabel(channel)} account "${accountId}".`);

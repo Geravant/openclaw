@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-
 import { MANIFEST_KEY } from "../compat/legacy-names.js";
+import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
+import { isRecord } from "../utils.js";
 import type { PluginConfigUiHint, PluginKind } from "./types.js";
 
 export const PLUGIN_MANIFEST_FILENAME = "openclaw.plugin.json";
@@ -25,36 +26,50 @@ export type PluginManifestLoadResult =
   | { ok: false; error: string; manifestPath: string };
 
 function normalizeStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
   return value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 export function resolvePluginManifestPath(rootDir: string): string {
   for (const filename of PLUGIN_MANIFEST_FILENAMES) {
     const candidate = path.join(rootDir, filename);
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
   return path.join(rootDir, PLUGIN_MANIFEST_FILENAME);
 }
 
 export function loadPluginManifest(rootDir: string): PluginManifestLoadResult {
   const manifestPath = resolvePluginManifestPath(rootDir);
-  if (!fs.existsSync(manifestPath)) {
-    return { ok: false, error: `plugin manifest not found: ${manifestPath}`, manifestPath };
+  const opened = openBoundaryFileSync({
+    absolutePath: manifestPath,
+    rootPath: rootDir,
+    boundaryLabel: "plugin root",
+  });
+  if (!opened.ok) {
+    if (opened.reason === "path") {
+      return { ok: false, error: `plugin manifest not found: ${manifestPath}`, manifestPath };
+    }
+    return {
+      ok: false,
+      error: `unsafe plugin manifest path: ${manifestPath} (${opened.reason})`,
+      manifestPath,
+    };
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as unknown;
+    raw = JSON.parse(fs.readFileSync(opened.fd, "utf-8")) as unknown;
   } catch (err) {
     return {
       ok: false,
       error: `failed to parse plugin manifest: ${String(err)}`,
       manifestPath,
     };
+  } finally {
+    fs.closeSync(opened.fd);
   }
   if (!isRecord(raw)) {
     return { ok: false, error: "plugin manifest must be an object", manifestPath };
@@ -144,6 +159,8 @@ export type PackageManifest = {
 export function getPackageManifestMetadata(
   manifest: PackageManifest | undefined,
 ): OpenClawPackageManifest | undefined {
-  if (!manifest) return undefined;
+  if (!manifest) {
+    return undefined;
+  }
   return manifest[MANIFEST_KEY];
 }
